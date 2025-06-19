@@ -2,284 +2,301 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 import io
+import base64
+import requests
+from datetime import datetime
+import json
 
-# Configure Streamlit
-st.set_page_config(page_title="Personal Assistant", layout="wide")
+# Configure the page
+st.set_page_config(
+    page_title="Saksham's AI Assistant",
+    page_icon="🤖",
+    layout="wide"
+)
 
-# Your Personal Data
-PERSONAL_DATA = {
+# Configure Gemini API
+GOOGLE_API_KEY = "AIzaSyB46mW-7p4MIrKSe-oudQLpjxWli6XjVpE"
+genai.configure(api_key=GOOGLE_API_KEY)
+
+# Your professional information
+PERSONAL_INFO = {
     "name": "Saksham Raj",
-    "email": "sakshamraj0170@gmail.com", 
+    "email": "sakshamraj0170@gmail.com",
     "phone": "7004028809",
     "linkedin": "https://www.linkedin.com/in/saksham-raj-07863b203/",
     "github": "https://github.com/Saksham700/",
-    
-    "bio": """Machine Learning Engineer and Data Scientist with expertise in predictive analytics, 
-    healthcare technology, and agriculture solutions. Experienced in building end-to-end ML pipelines 
-    and deploying AI solutions for real-world problems.""",
-    
-    "projects": {
-        "GrowGuide": {
-            "description": "AI-powered crop and fertilizer prediction system using ML algorithms to suggest optimal crops and predict yields for farmers",
-            "tech": "Python, Scikit-learn, Pandas, NumPy, Jupyter",
-            "impact": "Helps farmers make data-driven decisions for better crop yields",
-            "domain": "Agriculture Technology"
-        },
-        "Data Scientist Salary Prediction": {
-            "description": "ML model predicting data scientist salaries based on location, education, experience, company size, and industry factors",
-            "tech": "Python, Machine Learning, Feature Engineering, Regression Models",
-            "impact": "Provides salary insights for career planning in data science",
-            "domain": "HR Analytics"
-        },
-        "Kidney Stone Prediction": {
-            "description": "Healthcare ML system predicting kidney stone presence using clinical parameters and patient data",
-            "tech": "Python, Classification Algorithms, Medical Data Analysis",
-            "impact": "Early detection system for kidney stone diagnosis",
-            "domain": "Healthcare Technology"
-        },
-        "Airlines Delay Prediction": {
-            "description": "Predictive analytics system for flight delays using historical aviation data and weather patterns",
-            "tech": "Python, Time Series Analysis, Feature Engineering",
-            "impact": "Helps airlines and passengers plan better travel schedules",
-            "domain": "Transportation Analytics"
-        }
-    },
-    
-    "skills": {
-        "Programming": ["Python", "C++", "HTML"],
-        "ML/AI": ["Machine Learning", "Deep Learning", "Predictive Analytics", "Feature Engineering"],
-        "Data Science": ["Data Analysis", "Statistical Modeling", "Data Visualization"],
-        "Tools": ["Jupyter Notebook", "Pandas", "NumPy", "Scikit-learn"],
-        "Domains": ["Healthcare Tech", "Agriculture Tech", "HR Analytics", "Transportation Analytics"]
-    },
-    
-    "achievements": [
-        "Developed 4+ end-to-end ML projects with real-world applications",
-        "Expertise in healthcare and agriculture AI solutions",
-        "Strong background in predictive analytics and data modeling",
-        "Open source contributor with projects on GitHub"
-    ]
+    "portfolio": "https://protfolio-saksham.streamlit.app/",
+    "resume": "https://drive.google.com/file/d/1t-PnuV0ivjh4_1Cu2Fi-BQPi8ZsIpwSI/view"
 }
 
-# Context Builder
-def build_context():
-    context = f"""
-You are an AI assistant for {PERSONAL_DATA['name']}, helping him generate professional emails, messages, and responses.
+# Professional context (you can expand this based on your actual experience)
+PROFESSIONAL_CONTEXT = """
+You are Saksham Raj, a professional with the following details:
 
-PERSONAL PROFILE:
-Name: {PERSONAL_DATA['name']}
-Email: {PERSONAL_DATA['email']}
-Phone: {PERSONAL_DATA['phone']}
-LinkedIn: {PERSONAL_DATA['linkedin']}
-GitHub: {PERSONAL_DATA['github']}
+Contact Information:
+- Email: sakshamraj0170@gmail.com
+- Phone: 7004028809
+- LinkedIn: https://www.linkedin.com/in/saksham-raj-07863b203/
+- GitHub: https://github.com/Saksham700/
+- Portfolio: https://protfolio-saksham.streamlit.app/
 
-BIO: {PERSONAL_DATA['bio']}
+Professional Background:
+- Experienced in software development and data science
+- Skilled in Python, machine learning, and web development
+- Active on GitHub with various projects
+- Has a professional portfolio showcasing work
+- Available for collaborations and professional opportunities
 
-KEY PROJECTS:
+Key Skills:
+- Python Programming
+- Machine Learning & AI
+- Web Development (Streamlit, Flask)
+- Data Analysis
+- Software Engineering
+- Project Management
+
+You should respond as Saksham when drafting emails, messages, or answering questions about your professional background.
+Always maintain a professional but friendly tone in communications.
 """
-    
-    for project_name, details in PERSONAL_DATA['projects'].items():
-        context += f"""
-• {project_name}: {details['description']}
-  Technologies: {details['tech']}
-  Impact: {details['impact']}
-  Domain: {details['domain']}
-"""
-    
-    context += f"""
-TECHNICAL SKILLS:
-• Programming: {', '.join(PERSONAL_DATA['skills']['Programming'])}
-• ML/AI: {', '.join(PERSONAL_DATA['skills']['ML/AI'])}
-• Data Science: {', '.join(PERSONAL_DATA['skills']['Data Science'])}
-• Tools: {', '.join(PERSONAL_DATA['skills']['Tools'])}
-• Domain Expertise: {', '.join(PERSONAL_DATA['skills']['Domains'])}
 
-KEY ACHIEVEMENTS:
-"""
-    for achievement in PERSONAL_DATA['achievements']:
-        context += f"• {achievement}\n"
-    
-    return context
+def initialize_session_state():
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+    if 'model' not in st.session_state:
+        st.session_state.model = genai.GenerativeModel('gemini-pro')
+    if 'vision_model' not in st.session_state:
+        st.session_state.vision_model = genai.GenerativeModel('gemini-pro-vision')
 
-# Initialize Gemini
-@st.cache_resource
-def init_gemini():
-    genai.configure(api_key="AIzaSyB46mW-7p4MIrKSe-oudQLpjxWli6XjVpE")
-    return genai.GenerativeModel('gemini-pro'), genai.GenerativeModel('gemini-pro-vision')
-
-def generate_content(model, prompt, context):
+def get_ai_response(prompt, context=""):
     try:
-        full_prompt = f"{context}\n\n{prompt}"
-        response = model.generate_content(full_prompt)
+        full_prompt = f"{PROFESSIONAL_CONTEXT}\n\n{context}\n\nUser Request: {prompt}"
+        response = st.session_state.model.generate_content(full_prompt)
         return response.text
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error generating response: {str(e)}"
 
-# UI
-st.title("Personal AI Assistant")
-
-model, vision_model = init_gemini()
-context = build_context()
-
-# Main Functions
-col1, col2 = st.columns([1, 1])
-
-with col1:
-    st.subheader("📧 Email Generator")
-    
-    email_type = st.selectbox("Type", ["Job Application", "Referral Request", "LinkedIn Outreach", "Follow-up", "Custom"])
-    company = st.text_input("Company/Person")
-    role = st.text_input("Role/Position")
-    details = st.text_area("Specific Details/Context", height=100)
-    
-    if st.button("Generate Email"):
-        if details:
-            prompt = f"""
-Generate a professional {email_type.lower()} email for {PERSONAL_DATA['name']}.
-
-Target: {company if company else 'Company'}
-Role: {role if role else 'Position'}
-Context: {details}
-
-Requirements:
-1. Professional but personable tone
-2. Highlight most relevant projects and skills for this context
-3. Include specific technical details and achievements
-4. Clear call to action
-5. Proper email format with subject line
-6. Keep it concise but comprehensive
-            """
-            
-            result = generate_content(model, prompt, context)
-            st.text_area("Generated Email:", value=result, height=400)
-
-with col2:
-    st.subheader("💬 Message Generator")
-    
-    message_type = st.selectbox("Type", ["LinkedIn Message", "WhatsApp/Text", "Slack/Teams", "Twitter DM"])
-    purpose = st.text_input("Purpose")
-    recipient = st.text_input("Recipient")
-    msg_context = st.text_area("Context", height=100)
-    
-    if st.button("Generate Message"):
-        if msg_context:
-            prompt = f"""
-Generate a {message_type.lower()} for {PERSONAL_DATA['name']}.
-
-To: {recipient if recipient else 'Recipient'}
-Purpose: {purpose if purpose else 'General outreach'}
-Context: {msg_context}
-
-Requirements:
-1. Platform-appropriate length and tone
-2. Relevant skills/projects mention
-3. Clear purpose
-4. Professional yet friendly
-5. Call to action if needed
-            """
-            
-            result = generate_content(model, prompt, context)
-            st.text_area("Generated Message:", value=result, height=300)
-
-# Job Description Processor
-st.subheader("📄 Job Description Processor")
-job_desc = st.text_area("Paste Job Description", height=150)
-
-col3, col4, col5 = st.columns(3)
-
-with col3:
-    if st.button("Generate Cover Letter"):
-        if job_desc:
-            prompt = f"""
-Analyze this job description and create a tailored cover letter for {PERSONAL_DATA['name']}:
-
-{job_desc}
-
-Requirements:
-1. Match specific requirements with Saksham's projects and skills
-2. Highlight most relevant experience
-3. Show clear value proposition
-4. Professional format
-5. Quantify achievements where possible
-            """
-            result = generate_content(model, prompt, context)
-            st.text_area("Cover Letter:", value=result, height=400)
-
-with col4:
-    if st.button("Create Application Email"):
-        if job_desc:
-            prompt = f"""
-Create a job application email for this position for {PERSONAL_DATA['name']}:
-
-{job_desc}
-
-Include:
-1. Subject line
-2. Relevant project highlights
-3. Technical skills alignment
-4. Professional closing
-5. Resume attachment mention
-            """
-            result = generate_content(model, prompt, context)
-            st.text_area("Application Email:", value=result, height=400)
-
-with col5:
-    if st.button("Skills Match Analysis"):
-        if job_desc:
-            prompt = f"""
-Analyze this job description against {PERSONAL_DATA['name']}'s profile:
-
-{job_desc}
-
-Provide:
-1. Matching skills and projects
-2. Missing skills/requirements
-3. How to position existing experience
-4. Key points to emphasize
-5. Suggested learning areas
-            """
-            result = generate_content(model, prompt, context)
-            st.text_area("Analysis:", value=result, height=400)
-
-# Image Processor
-st.subheader("🖼️ Image Processor")
-uploaded_file = st.file_uploader("Upload Job Posting/Document Image", type=['png', 'jpg', 'jpeg'])
-
-if uploaded_file:
-    image = Image.open(uploaded_file)
-    st.image(image, width=300)
-    
-    process_type = st.selectbox("Generate", ["Email Application", "LinkedIn Message", "Analysis"])
-    
-    if st.button("Process Image"):
-        prompt = f"""
-Analyze this image (likely a job posting or professional document) for {PERSONAL_DATA['name']}.
-
-Generate a {process_type.lower()} that:
-1. Addresses specific requirements shown in image
-2. Highlights relevant projects and skills
-3. Uses appropriate tone and format
-4. Shows clear alignment with the opportunity
+def analyze_image_and_generate_content(image, prompt, content_type):
+    try:
+        context = f"""
+        {PROFESSIONAL_CONTEXT}
+        
+        The user has uploaded an image (likely a job description, announcement, or professional content) 
+        and wants you to generate a {content_type} based on it.
+        
+        Instructions:
+        - Analyze the image content carefully
+        - Generate a professional {content_type} from Saksham's perspective
+        - Include relevant skills and experience from the professional context
+        - Maintain appropriate tone for the content type
         """
         
-        try:
-            result = vision_model.generate_content([prompt + "\n\nPersonal Context:\n" + context, image])
-            st.text_area(f"Generated {process_type}:", value=result.text, height=400)
-        except Exception as e:
-            st.error(f"Error processing image: {str(e)}")
+        full_prompt = f"{context}\n\nSpecific request: {prompt}"
+        response = st.session_state.vision_model.generate_content([full_prompt, image])
+        return response.text
+    except Exception as e:
+        return f"Error analyzing image: {str(e)}"
 
-# Quick Q&A
-st.subheader("❓ Quick Q&A")
-question = st.text_input("Ask anything about your background, projects, or get professional advice")
+def create_email_template(subject, recipient, purpose):
+    prompt = f"""
+    Generate a professional email with the following details:
+    - Subject: {subject}
+    - Recipient: {recipient}
+    - Purpose: {purpose}
+    
+    Include appropriate greeting, body, and closing.
+    Make it professional but personable.
+    Include relevant contact information in signature.
+    """
+    return get_ai_response(prompt)
 
-if st.button("Get Answer"):
-    if question:
-        prompt = f"""
-Answer this question about {PERSONAL_DATA['name']} professionally and accurately:
+def create_linkedin_message(context, purpose):
+    prompt = f"""
+    Generate a LinkedIn message for the following context:
+    - Context: {context}
+    - Purpose: {purpose}
+    
+    Keep it concise, professional, and engaging.
+    Make it suitable for LinkedIn networking.
+    """
+    return get_ai_response(prompt)
 
-{question}
+def create_referral_request(company, position, referrer_name=""):
+    prompt = f"""
+    Generate a referral request message for:
+    - Company: {company}
+    - Position: {position}
+    - Referrer: {referrer_name if referrer_name else "a connection"}
+    
+    Make it polite, professional, and highlight relevant qualifications.
+    Include a brief mention of why you're interested in the role.
+    """
+    return get_ai_response(prompt)
 
-Provide specific details about projects, skills, and experience where relevant.
-        """
-        result = generate_content(model, prompt, context)
-        st.text_area("Answer:", value=result, height=200)
+def main():
+    initialize_session_state()
+    
+    st.title("🤖 Saksham's Personal AI Assistant")
+    st.markdown("*Your AI-powered communication helper for emails, messages, and professional content*")
+    
+    # Sidebar for quick actions
+    st.sidebar.title("Quick Actions")
+    st.sidebar.markdown("### 📧 Email Templates")
+    st.sidebar.markdown("### 💼 LinkedIn Messages")
+    st.sidebar.markdown("### 🤝 Referral Requests")
+    st.sidebar.markdown("### 📱 General Messages")
+    st.sidebar.markdown("### 🖼️ Image Analysis")
+    
+    # Main interface
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["💬 Chat", "📧 Email Draft", "💼 LinkedIn", "🤝 Referrals", "🖼️ Image Analysis"])
+    
+    with tab1:
+        st.header("General Chat Assistant")
+        st.markdown("Ask me anything about yourself, your projects, or get help with general communication!")
+        
+        # Chat interface
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        
+        if prompt := st.chat_input("Ask me anything about yourself or request help with communication..."):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            with st.chat_message("assistant"):
+                response = get_ai_response(prompt)
+                st.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    with tab2:
+        st.header("📧 Email Draft Generator")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            email_type = st.selectbox(
+                "Email Type",
+                ["Job Application", "Follow-up", "Networking", "Project Proposal", "Thank You", "Custom"]
+            )
+            
+            recipient = st.text_input("Recipient Name/Company")
+            subject = st.text_input("Email Subject")
+            
+        with col2:
+            purpose = st.text_area("Email Purpose/Context", height=100)
+            additional_notes = st.text_area("Additional Notes/Requirements", height=100)
+        
+        if st.button("Generate Email", type="primary"):
+            if recipient and subject and purpose:
+                context = f"Email Type: {email_type}\nAdditional Notes: {additional_notes}"
+                email_content = create_email_template(subject, recipient, f"{purpose}\n{context}")
+                
+                st.subheader("Generated Email:")
+                st.text_area("Email Content", email_content, height=300)
+                
+                # Copy button simulation
+                st.code(email_content, language="text")
+            else:
+                st.error("Please fill in all required fields!")
+    
+    with tab3:
+        st.header("💼 LinkedIn Message Generator")
+        
+        message_type = st.selectbox(
+            "Message Type",
+            ["Connection Request", "Follow-up", "Networking", "Job Inquiry", "Collaboration", "Thank You"]
+        )
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            recipient_info = st.text_input("Recipient Name/Title")
+            company_info = st.text_input("Company (if applicable)")
+        
+        with col2:
+            message_context = st.text_area("Context/Background", height=100)
+            specific_ask = st.text_area("Specific Request/Goal", height=100)
+        
+        if st.button("Generate LinkedIn Message", type="primary"):
+            if recipient_info and message_context:
+                full_context = f"""
+                Message Type: {message_type}
+                Recipient: {recipient_info}
+                Company: {company_info}
+                Context: {message_context}
+                Specific Ask: {specific_ask}
+                """
+                linkedin_message = create_linkedin_message(full_context, specific_ask)
+                
+                st.subheader("Generated LinkedIn Message:")
+                st.text_area("Message Content", linkedin_message, height=200)
+                st.code(linkedin_message, language="text")
+            else:
+                st.error("Please provide recipient info and context!")
+    
+    with tab4:
+        st.header("🤝 Referral Request Generator")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            company_name = st.text_input("Company Name")
+            position_title = st.text_input("Position Title")
+        
+        with col2:
+            referrer_name = st.text_input("Referrer Name (optional)")
+            relationship = st.text_input("Relationship to Referrer")
+        
+        additional_context = st.text_area("Additional Context (why this role, etc.)")
+        
+        if st.button("Generate Referral Request", type="primary"):
+            if company_name and position_title:
+                referral_message = create_referral_request(company_name, position_title, referrer_name)
+                
+                st.subheader("Generated Referral Request:")
+                st.text_area("Referral Message", referral_message, height=250)
+                st.code(referral_message, language="text")
+            else:
+                st.error("Please provide company and position information!")
+    
+    with tab5:
+        st.header("🖼️ Image Analysis & Content Generation")
+        st.markdown("Upload an image (job description, announcement, etc.) and get tailored content!")
+        
+        uploaded_file = st.file_uploader("Choose an image...", type=['png', 'jpg', 'jpeg'])
+        
+        if uploaded_file is not None:
+            image = Image.open(uploaded_file)
+            st.image(image, caption='Uploaded Image', use_column_width=True)
+            
+            content_type = st.selectbox(
+                "What would you like me to generate?",
+                ["Email", "LinkedIn Message", "Cover Letter", "Application Message", "Follow-up Email"]
+            )
+            
+            additional_instructions = st.text_area("Additional Instructions/Context")
+            
+            if st.button("Analyze Image & Generate Content", type="primary"):
+                with st.spinner("Analyzing image and generating content..."):
+                    prompt = f"Generate a {content_type} based on this image. {additional_instructions}"
+                    result = analyze_image_and_generate_content(image, prompt, content_type)
+                    
+                    st.subheader(f"Generated {content_type}:")
+                    st.text_area("Generated Content", result, height=300)
+                    st.code(result, language="text")
+    
+    # Footer with contact info
+    st.markdown("---")
+    st.markdown("### 📞 Contact Information")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.markdown(f"**Email:** {PERSONAL_INFO['email']}")
+    with col2:
+        st.markdown(f"**Phone:** {PERSONAL_INFO['phone']}")
+    with col3:
+        st.markdown(f"**[LinkedIn]({PERSONAL_INFO['linkedin']})**")
+    with col4:
+        st.markdown(f"**[Portfolio]({PERSONAL_INFO['portfolio']})**")
+
+if __name__ == "__main__":
+    main()
