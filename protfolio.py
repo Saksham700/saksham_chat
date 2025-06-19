@@ -63,9 +63,9 @@ def initialize_session_state():
     if 'messages' not in st.session_state:
         st.session_state.messages = []
     if 'model' not in st.session_state:
-        st.session_state.model = genai.GenerativeModel('gemini-pro')
+        st.session_state.model = genai.GenerativeModel('gemini-2.0-flash-001')
     if 'vision_model' not in st.session_state:
-        st.session_state.vision_model = genai.GenerativeModel('gemini-pro-vision')
+        st.session_state.vision_model = genai.GenerativeModel('gemini-2.0-flash-001')
 
 def get_ai_response(prompt, context=""):
     try:
